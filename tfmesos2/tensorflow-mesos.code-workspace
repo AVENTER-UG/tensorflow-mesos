@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../not_me/tfmesos"
+		}
+	],
+	"settings": {}
+}
