@@ -1,7 +1,14 @@
 # Tensorflow V2 for Mesos
 
+[![Docs](https://img.shields.io/static/v1?label=&message=Issues&color=brightgreen)](https://github.com/AVENTER-UG/tensorflow-mesos/issues)
+[![Chat](https://img.shields.io/static/v1?label=&message=Chat&color=brightgreen)](https://matrix.to/#/#mesos:matrix.aventer.biz?via=matrix.aventer.biz)
+
 With these python module it's possible to run Tensorflow scripts against a Mesos cluster. For 
 detailed examples, please have a look into the examples directory.
+
+## Issues
+
+To open an issue, please use this place: https://github.com/AVENTER-UG/tensorflow-mesos/issues
 
 ## Requirements
 
