@@ -17,13 +17,13 @@ from addict import Dict
 from six import iteritems
 from six.moves import urllib
 from avmesos.client import MesosClient
-from tfmesos2.utils import setup_logger
 from waitress import serve
 
 app = Flask(__name__)
 auth = HTTPBasicAuth()
 api_username = ""
 api_password = ""
+th = None
 
 class Job(object):
 
@@ -189,9 +189,10 @@ class TensorflowMesos():
                 print('Stop requested by user, stopping framework....')
 
     def __init__(self, task_spec, volumes={}, env={}, quiet=False):
-        urllib3.disable_warnings()        
-        self.logger =setup_logger(logging.getLogger(__name__))
+        urllib3.disable_warnings()   
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
+        self.logger = logging
         self.driver = None
         self.task_queue = Queue()
         self.tasks = {}
@@ -286,13 +287,15 @@ class TensorflowMesos():
         stop the thead
 
         """
-
+        self.logger.info("Cluster teardown")
+        self.driver.tearDown()
 
     def subscribed(self, driver, session=None):
         """
         Subscribe to Mesos Master
 
         """
+        self.driver = driver
 
 
     def status_update(self, update):
@@ -429,7 +432,7 @@ class TensorflowMesos():
     def targets(self):
         targets = {}
         for id, task in iteritems(self.tasks):
-            target_name = '/job:%s/task:%s' % (task.job_name, task.task_index)
+            target_name = '/job:%s/replica:0/task:%s/device:CPU:0' % (task.job_name, task.task_index)
             grpc_addr = 'grpc://%s:%s' % (task.addr, task.port)
             targets[target_name] = grpc_addr
         return targets 
@@ -440,14 +443,19 @@ class TensorflowMesos():
         while not all(task.initalized for task in tasks):
             self.logger.info("Cluster not ready")
             time.sleep(10)
+        time.sleep(10)
         self.logger.info("Cluster ready")
 
-    def get_cluster_def(self):
+    @property
+    def cluster_def(self):
+        cluster_def = {}
         tasks = sorted(self.tasks.values(), key=lambda task: task.task_index)
 
         for task in tasks:
             if task.addr is not None and task.port is not None:
                 cluster_def.setdefault(task.job_name, []).append(task.addr+":"+task.port)
+
+        return cluster_def
 
     
 class API:

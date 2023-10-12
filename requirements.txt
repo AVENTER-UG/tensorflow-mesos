@@ -5,3 +5,4 @@ protobuf>=4.24.3
 tensorflow>=2.14.0
 tensorflow-mesos>=0.1.0
 urllib3>=2.0.6
+logger>=1.0
