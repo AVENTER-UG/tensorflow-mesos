@@ -432,7 +432,7 @@ class TensorflowMesos():
     def targets(self):
         targets = {}
         for id, task in iteritems(self.tasks):
-            target_name = '/job:%s/replica:0/task:%s/device:CPU:0' % (task.job_name, task.task_index)
+            target_name = '/job:%s/task:%s' % (task.job_name, task.task_index)
             grpc_addr = 'grpc://%s:%s' % (task.addr, task.port)
             targets[target_name] = grpc_addr
         return targets 

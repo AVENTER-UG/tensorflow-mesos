@@ -1,14 +1,33 @@
-# Tensorflow for Mesos
+# Tensorflow V2 for Mesos
 
-[![Docs](https://img.shields.io/static/v1?label=&message=Issues&color=brightgreen)](https://github.com/mm3scluster/airflow-provider-mesos/issues)
-[![Chat](https://img.shields.io/static/v1?label=&message=Chat&color=brightgreen)](https://matrix.to/#/#mesos:matrix.aventer.biz?via=matrix.aventer.biz)
-[![Docs](https://img.shields.io/static/v1?label=&message=Docs&color=brightgreen)](https://m3scluster.github.io/airflow-provider-mesos/)
-[![GoDoc](https://godoc.org/github.com/AVENTER-UG/mesos-dns?status.svg)](https://godoc.org/github.com/AVENTER-UG/airflow-provider-mesos) 
-
-## Issues
-
-To open an issue, please use this place: https://github.com/m3scluster/airflow-provider-mesos/issues
+With these python module it's possible to run Tensorflow scripts against a Mesos cluster. For 
+detailed examples, please have a look into the examples directory.
 
 ## Requirements
 
 - Apache Mesos minimum 1.6.x
+
+## How to install
+
+To install tensorflow-mesos and all required packages, execute the following command.
+
+```bash
+
+pip install tfmesos2
+
+```
+
+## How to use?
+
+Tensorflow for Mesos need some environment variables to know how and which Mesos it should use.
+
+```bash
+
+export MESOS_SSL=true
+export MESOS_MASTER=localhost:5050
+export MESOS_USERNAME=<MESOS_PRINCIPAL>
+export MESOS_PASSWORD=<MESOS_SECRET>
+
+python examples/plus.py
+
+```
