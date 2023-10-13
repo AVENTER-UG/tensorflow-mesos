@@ -18,7 +18,7 @@ def main():
         },
     ]
 
-    with cluster(jobs_def, quiet=False) as c:
+    with cluster(jobs_def) as c:
         os.environ["TF_CONFIG"] = json.dumps({
             "cluster": c.cluster_def,
             "task": {

@@ -11,7 +11,6 @@ import requests
 import time
 from threading import Thread
 from flask import Flask, Response
-from flask_httpauth import HTTPBasicAuth
 from queue import Queue
 from addict import Dict
 from six import iteritems
@@ -20,9 +19,6 @@ from avmesos.client import MesosClient
 from waitress import serve
 
 app = Flask(__name__)
-auth = HTTPBasicAuth()
-api_username = ""
-api_password = ""
 th = None
 
 class Job(object):
@@ -188,17 +184,14 @@ class TensorflowMesos():
             except KeyboardInterrupt:
                 print('Stop requested by user, stopping framework....')
 
-    def __init__(self, task_spec, volumes={}, env={}, quiet=False):
+    def __init__(self, task_spec, volumes={}, env={}, loglevel=logging.INFO):
         urllib3.disable_warnings()   
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+        logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s')
 
         self.logger = logging
         self.driver = None
         self.task_queue = Queue()
         self.tasks = {}
-
-        env["TFMESOS2_CLIENT_USERNAME"] = api_username
-        env["TFMESOS2_CLIENT_PASSWORD"] = api_password
 
         for job in task_spec:
             for task_index in range(job.start, job.num):
@@ -445,6 +438,8 @@ class TensorflowMesos():
             time.sleep(10)
         time.sleep(10)
         self.logger.info("Cluster ready")
+        self.logger.info("Suppress Mesos Framework")
+        self.driver.suppress()        
 
     @property
     def cluster_def(self):
@@ -459,22 +454,23 @@ class TensorflowMesos():
 
     
 class API:
+
     def __init__(self, tasks):
         self.tasks = tasks
-
+    
     def set_task_port(self, task_id, port):
         if task_id in self.tasks:
             self.tasks[task_id].port = port
             self.tasks[task_id].initalized = True
 
         return Response(None, status=200, mimetype="application/json")
-
+    
     def set_task_init(self, task_id):
         if task_id in self.tasks:
             self.tasks[task_id].initalized = True
 
         return Response(None, status=200, mimetype="application/json")
-        
+    
     def get_status(self):
         res = "nok"
         tasks = sorted(self.tasks.values(), key=lambda task: task.task_index)
@@ -515,3 +511,4 @@ class API:
         
         response = Response(None, status=200, mimetype="application/json")
         return response        
+    

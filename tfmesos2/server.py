@@ -87,7 +87,6 @@ def loop():
                     logger.info(job_info["job_name"])
                     logger.info(job_info["task_index"])
 
-
                     server = tf.distribute.Server(cluster_def, job_name=job_name, task_index=task_index, protocol="grpc", config=tf.compat.v1.ConfigProto(allow_soft_placement=True), start=True)
 
                     cpu = tf.config.list_logical_devices()
@@ -95,7 +94,6 @@ def loop():
 
                     logger.info(cpu)
                     logger.info(gpu)
-
 
                     try:
                         server.join()
