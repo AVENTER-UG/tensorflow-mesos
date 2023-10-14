@@ -17,7 +17,6 @@ from six import iteritems
 from six.moves import urllib
 from avmesos.client import MesosClient
 from waitress import serve
-
 app = Flask(__name__)
 th = None
 
@@ -179,12 +178,10 @@ class TensorflowMesos():
             self.stop = False
 
         def run(self):
-            try:
-                self.client.register()
-            except KeyboardInterrupt:
-                print('Stop requested by user, stopping framework....')
+            self.client.register()
 
-    def __init__(self, task_spec, volumes={}, env={}, loglevel=logging.INFO):
+    def __init__(self, task_spec, volumes={}, env={}, loglevel=logging.INFO, port=11000):
+        os.environ["FLASK_ENV"] = "production"        
         urllib3.disable_warnings()   
         logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s')
 
@@ -243,45 +240,20 @@ class TensorflowMesos():
 
         self.th = TensorflowMesos.MesosFramework(self.client)
         self.th.start()
-        self.api = API(self.tasks)
+        self.api = API(self.tasks, port)
+        self.api.start()
 
-        app.add_url_rule(
-            "/v0/task/<task_id>/job",
-            "task/<task_id>/job",
-            self.api.get_task_job,
-            methods=["GET"],
-        )
-
-        app.add_url_rule(
-            "/v0/task/<task_id>/port/<port>",
-            "task/<task_id>/port/<port>",
-            self.api.set_task_port,
-            methods=["PUT"],
-        )
-
-        app.add_url_rule(
-            "/v0/status",
-            "status",
-            self.api.get_status,
-            methods=["GET"],
-        )
-
-        app.add_url_rule(
-            "/v0/task/<task_id>",
-            "task/<task_id>",
-            self.api.set_task_init,
-            methods=["PUT"],
-        )
-
-        Thread(target=serve, args=[app], daemon=True, kwargs={"port": "11000"}).start()
-
-    def stop(self):
+    def shutdown(self):
         """
-        stop the thead
+        stop the framework
 
         """
         self.logger.info("Cluster teardown")
-        self.driver.tearDown()
+        self.client.stop = True
+        self.client.tearDown()
+        self.th.stop = True
+        self.th.join()
+        self.api.stop()
 
     def subscribed(self, driver, session=None):
         """
@@ -351,7 +323,7 @@ class TensorflowMesos():
         offer_mem = 256.0
         offer_gpus = []
         gpu_resource_type = None        
-        force_pull = "true"
+        force_pull = "false"
         container_type = "DOCKER"
 
         if (not self.task_queue.empty()):
@@ -453,11 +425,48 @@ class TensorflowMesos():
         return cluster_def
 
     
-class API:
-
-    def __init__(self, tasks):
+class API(threading.Thread):
+    def __init__(self, tasks, port=11000):
+        threading.Thread.__init__(self)
         self.tasks = tasks
-    
+        self.stop_event = threading.Event()         
+        self.port = port
+
+    def run(self):
+        app.add_url_rule(
+            "/v0/task/<task_id>/job",
+            "task/<task_id>/job",
+            self.get_task_job,
+            methods=["GET"],
+        )
+
+        app.add_url_rule(
+            "/v0/task/<task_id>/port/<port>",
+            "task/<task_id>/port/<port>",
+            self.set_task_port,
+            methods=["PUT"],
+        )
+
+        app.add_url_rule(
+            "/v0/status",
+            "status",
+            self.get_status,
+            methods=["GET"],
+        )
+
+        app.add_url_rule(
+            "/v0/task/<task_id>",
+            "task/<task_id>",
+            self.set_task_init,
+            methods=["PUT"],
+        )
+
+        serve(app, host="0.0.0.0", port=self.port)
+
+    def stop(self):
+        self.stop_event.set()        
+        self.join()        
+
     def set_task_port(self, task_id, port):
         if task_id in self.tasks:
             self.tasks[task_id].port = port
@@ -479,7 +488,7 @@ class API:
             if task.state == "TASK_RUNNING":
                 res = "ok"
             if task.state != "TASK_RUNNING":
-                return Response(res, status=200, mimetype="application/json")
+                return Response(res, status=204, mimetype="application/json")
 
         return Response(res, status=200, mimetype="application/json")
     

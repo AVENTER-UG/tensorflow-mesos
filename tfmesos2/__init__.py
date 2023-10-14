@@ -19,4 +19,4 @@ def cluster(jobs, **kw):
         s.wait_until_ready()
         yield s
     finally:
-        s.stop()
+        s.shutdown()

@@ -20,12 +20,10 @@ def main():
 
     with cluster(jobs_def) as c:
         os.environ["TF_CONFIG"] = json.dumps({
-            "cluster": c.cluster_def,
-            "task": {
-                "type": "worker",
-                "index": 0
-            }
+            "cluster": c.cluster_def
         })
+
+        print(os.environ["TF_CONFIG"])
 
         cluster_resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
 
@@ -42,7 +40,7 @@ def main():
             result = op.numpy()
             print("Result is: ")
             print(result)
-            c.stop()
+            c.shutdown()
 
 if __name__ == '__main__':
     main()

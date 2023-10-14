@@ -17,7 +17,7 @@ except UnicodeDecodeError:
 
 setup(
     name="tfmesos2",
-    version="0.1.0",
+    version="0.1.1",
     description="Tensorflow for Apache Mesos",
     long_description=README,
     long_description_content_type="text/markdown",

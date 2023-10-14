@@ -72,6 +72,7 @@ def get_cluster_def():
 def loop():
     server = None
     while True:
+        logger.info(server)
         if server is None:
             if client_ip != "":
                 set_port()
@@ -79,6 +80,10 @@ def loop():
                 job_info = get_cluster_def()
                 if job_info is not None:
                     cluster_def=tf.train.ClusterSpec(job_info["cluster_def"])
+
+                    os.environ["TF_CONFIG"] = json.dumps({
+                        "cluster": job_info["cluster_def"]
+                    })
 
                     job_name=job_info["job_name"]
                     task_index=job_info["task_index"]
