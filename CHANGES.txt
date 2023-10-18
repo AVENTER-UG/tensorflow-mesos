@@ -1,8 +1,9 @@
 ## Changelog
 
-## master
+## v0.1.2
 
 - ADD: matrix calculation as example
+- CHANGE: cleanup code.
 
 ## v0.1.1
 
