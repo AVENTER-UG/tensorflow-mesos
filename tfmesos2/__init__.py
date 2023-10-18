@@ -1,8 +1,5 @@
 from contextlib import contextmanager
-from tfmesos2.scheduler import Job, TensorflowMesos
-
-__VERSION__ = '0.0.10'
-
+from tfmesos2.scheduler import Job, TensorflowMesos, API
 
 @contextmanager
 def cluster(jobs, **kw):
@@ -16,6 +13,9 @@ def cluster(jobs, **kw):
             for job in jobs]
     try:
         s = TensorflowMesos(jobs, **kw)
+        api = API(s.tasks, port=11000)
+        api.start()
+        s.start()
         s.wait_until_ready()
         yield s
     finally:

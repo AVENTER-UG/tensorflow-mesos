@@ -4,38 +4,36 @@ import math
 import threading
 import logging
 import uuid
-import urllib3
-import textwrap
 import sys
-import requests
 import time
-from threading import Thread
-from flask import Flask, Response
 from queue import Queue
+import urllib
+import urllib3
+import requests
+from flask import Flask, Response
 from addict import Dict
 from six import iteritems
-from six.moves import urllib
 from avmesos.client import MesosClient
 from waitress import serve
+
 app = Flask(__name__)
-th = None
+TH = None
 
 class Job(object):
 
     def __init__(self, name, num, cpus=1.0, mem=1024.0,
-                 gpus=0, cmd=None, start=0):
+                 gpus=0, start=0):
         self.name = name
         self.num = num
         self.cpus = cpus
         self.gpus = gpus
         self.mem = mem
-        self.cmd = cmd
         self.start = start
 
 class Task(object):
 
     def __init__(self, mesos_task_id, job_name, task_index,
-                 cpus=1.0, mem=1024.0, gpus=0, cmd=None, volumes={}, env={}):
+                 cpus=1.0, mem=1024.0, gpus=0, volumes=None, env=None, logger=None):
         self.mesos_task_id = mesos_task_id
         self.job_name = job_name
         self.task_index = task_index
@@ -43,7 +41,6 @@ class Task(object):
         self.cpus = cpus
         self.gpus = gpus
         self.mem = mem
-        self.cmd = cmd
         self.volumes = volumes
         self.env = env
         self.offered = False
@@ -51,23 +48,22 @@ class Task(object):
         self.addr = None
         self.port = None
         self.connection = None
-        self.initalized = False
+        self.initialized = False
         self.state = ""
+        self.logger = logger
 
-    def __str__(self):
-        return textwrap.dedent('''
-        <Task
-          mesos_task_id=%s
-          addr=%s
-        >''' % (self.mesos_task_id, self.addr))
+        if volumes is None:
+            self.volumes = {}
+        if env is None:
+            self.env = {}
 
-    def to_task_info(self, offer, master_addr, gpu_uuids=[],
+    def to_task_info(self, offer, master_addr, gpu_uuids=None,
                      gpu_resource_type=None, containerizer_type='DOCKER',
                      force_pull_image=False):
         ti = Dict()
         ti.task_id.value = str(self.mesos_task_id)
         ti.agent_id.value = offer["agent_id"]["value"]
-        ti.name = '/job:%s/task:%s' % (self.job_name, self.task_index)
+        ti.name = f'/job:{self.job_name}/task:{self.task_index}'
         ti.resources = resources = []
 
         cpus = Dict()
@@ -99,11 +95,8 @@ class Task(object):
 
                 if self.gpus and gpu_uuids:
                     hostname = offer.hostname
-                    url = 'http://%s:3476/docker/cli?dev=%s' % (
-                        hostname, urllib.parse.quote(
-                            ' '.join(gpu_uuids)
-                        )
-                    )
+                    g_uuids = urllib.parse.quote(' '.join(gpu_uuids))
+                    url = f'http://{hostname}:3476/docker/cli?dev={g_uuids}'
 
                     try:
                         docker_args = urllib.request.urlopen(url).read()
@@ -115,6 +108,7 @@ class Task(object):
                             parameters.append(p)
                             p.key = k
                             p.value = v
+                    # pylint: disable=W0718
                     except Exception:
                         self.logger.exception(
                             'fail to determine remote device parameter,'
@@ -122,9 +116,7 @@ class Task(object):
                         )
                         gpu_uuids = []
             else:
-                assert False, (
-                    'Unsupported containerizer: %s' % containerizer_type
-                )
+                assert False, f"Unsupported containerizer: {containerizer_type}"
 
             ti.container.volumes = volumes = []
 
@@ -167,28 +159,29 @@ class Task(object):
         return ti
 
 
-class TensorflowMesos():
-    MAX_FAILURE_COUNT = 3    
+class TensorflowMesos(threading.Thread):
+    MAX_FAILURE_COUNT = 3
 
-    class MesosFramework(threading.Thread):
+    def run(self):
+        self.client.register()
 
-        def __init__(self, client):
-            threading.Thread.__init__(self)
-            self.client = client
-            self.stop = False
-
-        def run(self):
-            self.client.register()
-
-    def __init__(self, task_spec, volumes={}, env={}, loglevel=logging.INFO, port=11000):
-        os.environ["FLASK_ENV"] = "production"        
-        urllib3.disable_warnings()   
+    def __init__(self, task_spec, volumes=None, env=None, loglevel=logging.INFO):
+        urllib3.disable_warnings()
         logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s')
+
+        threading.Thread.__init__(self)
+        self.stop_event = threading.Event()
+        self.stop = False
 
         self.logger = logging
         self.driver = None
         self.task_queue = Queue()
         self.tasks = {}
+
+        if volumes is None:
+            self.volumes = {}
+        if env is None:
+            self.env = {}
 
         for job in task_spec:
             for task_index in range(job.start, job.num):
@@ -200,27 +193,27 @@ class TensorflowMesos():
                     cpus=job.cpus,
                     mem=job.mem,
                     gpus=job.gpus,
-                    cmd=job.cmd,
                     volumes=volumes,
-                    env=env
+                    env=env,
+                    logger=self.logger
                 )
                 self.tasks[mesos_task_id] = task
                 self.task_queue.put(task)
 
         self.framework_name = "tf"
-        self.framework_id = None        
+        self.framework_id = None
         self.framework_role = os.getenv("MESOS_FRAMEWORK_ROLE", "tensorflow")
-        
+
         self.master = os.getenv("MESOS_MASTER", "localhost:5050")
         master_urls = "http://" + self.master
         if os.getenv("MESOS_SSL", "False").lower() == "true":
-          master_urls = "https://" + self.master
+            master_urls = "https://" + self.master
 
         self.client = MesosClient(
             mesos_urls=master_urls.split(","),
             frameworkName=self.framework_name,
             frameworkId=None,
-        )          
+        )
 
         self.logger.info(
             "MesosFramework master : %s, name : %s, id : %s",
@@ -231,17 +224,13 @@ class TensorflowMesos():
 
         self.client = MesosClient(mesos_urls=master_urls.split(','))
         self.client.principal = os.getenv("MESOS_USERNAME")
-        self.client.secret = os.getenv("MESOS_PASSWORD")        
+        self.client.secret = os.getenv("MESOS_PASSWORD")
         self.client.set_role(self.framework_role)
 
         self.client.on(MesosClient.SUBSCRIBED, self.subscribed)
         self.client.on(MesosClient.UPDATE, self.status_update)
         self.client.on(MesosClient.OFFERS, self.offer_received)
 
-        self.th = TensorflowMesos.MesosFramework(self.client)
-        self.th.start()
-        self.api = API(self.tasks, port)
-        self.api.start()
 
     def shutdown(self):
         """
@@ -249,13 +238,13 @@ class TensorflowMesos():
 
         """
         self.logger.info("Cluster teardown")
+        self.stop_event.set()
         self.client.stop = True
         self.client.tearDown()
-        self.th.stop = True
-        self.th.join()
-        self.api.stop()
+        self.stop = True
+        self.join()
 
-    def subscribed(self, driver, session=None):
+    def subscribed(self, driver):
         """
         Subscribe to Mesos Master
 
@@ -289,29 +278,25 @@ class TensorflowMesos():
 
     def offer_received(self, offers):
         """If we got a offer, run a queued task"""
-        if (not self.task_queue.empty()):
-            for index in range(len(offers)):
+        offer_options = {
+            "Filters": {
+                "RefuseSeconds": 120.0
+            }
+        }
+        len_offers = len(offers)
+        if not self.task_queue.empty():
+            for index in range(len_offers):
                 offer = offers[index]
                 if not self.run_job(offer):
-                     offertmp = offer.get_offer()
-                     self.logger.info("Declined Offer: %s", offertmp["id"]["value"])
-                     offerOptions = {
-                         "Filters": {
-                             "RefuseSeconds": 120.0
-                         }
-                     }
-                     offer.decline(options=offerOptions)
+                    offertmp = offer.get_offer()
+                    self.logger.info("Declined Offer: %s", offertmp["id"]["value"])
+                    offer.decline(options=offer_options)
         else:
-            for index in range(len(offers)):
+            for index in range(len_offers):
                 offer = offers[index]
                 offertmp = offer.get_offer()
                 self.logger.info("Declined Offer: %s", offertmp["id"]["value"])
-                offerOptions = {
-                    "Filters": {
-                        "RefuseSeconds": 120.0
-                    }
-                }
-                offer.decline()            
+                offer.decline(options=offer_options)
 
     # pylint: disable=too-many-branches
     def run_job(self, mesos_offer):
@@ -322,11 +307,11 @@ class TensorflowMesos():
         offer_cpus = 0.1
         offer_mem = 256.0
         offer_gpus = []
-        gpu_resource_type = None        
+        gpu_resource_type = None
         force_pull = "false"
         container_type = "DOCKER"
 
-        if (not self.task_queue.empty()):
+        if not self.task_queue.empty():
             task = self.task_queue.get()
 
             # get CPU, mem and gpu from offer
@@ -345,7 +330,7 @@ class TensorflowMesos():
 
             gpus = int(math.ceil(task.gpus))
             gpu_uuids = offer_gpus[:gpus]
-            offer_gpus = offer_gpus[gpus:]                    
+            offer_gpus = offer_gpus[gpus:]
 
             self.logger.debug("Received offer %s with cpus: %f and mem: %f for task %s", offer["id"]["value"], offer_cpus, offer_mem, task.mesos_task_id)
 
@@ -367,16 +352,16 @@ class TensorflowMesos():
                    gpu_resource_type=gpu_resource_type,
                    containerizer_type=container_type,
                    force_pull_image=force_pull
-            )            
+            )
 
             tasks.append(task)
-        if len(tasks) > 0:            
+        if len(tasks) > 0:
             mesos_offer.accept(tasks, option)
             return True
         else:
             mesos_offer.decline()
-            return False        
-        
+            return False
+
     def get_task_info(self, task_id):
         url = f"https://{self.master}/tasks/?task_id={task_id}&framework_id={self.client.frameworkId}"
         headers = {
@@ -385,33 +370,33 @@ class TensorflowMesos():
         auth = (self.client.principal, self.client.secret)
 
         try:
-            response = requests.post(url, headers=headers, auth=auth, verify=False)
+            response = requests.post(url, headers=headers, auth=auth, verify=False, timeout=120)
             response.raise_for_status()
             task = response.json()
             return task
         except requests.exceptions.RequestException as e:
-            logging.error("Could not connect to mesos-master: " + str(e))
-            return {}         
+            logging.error("Could not connect to mesos-master: %s", str(e))
+            return {}
 
     @property
     def targets(self):
         targets = {}
-        for id, task in iteritems(self.tasks):
-            target_name = '/job:%s/task:%s' % (task.job_name, task.task_index)
-            grpc_addr = 'grpc://%s:%s' % (task.addr, task.port)
+        for task in iteritems(self.tasks):
+            target_name = f'/job:{task.job_name}/task:{task.task_index}'
+            grpc_addr = f'grpc://{task.addr}:{task.port}'
             targets[target_name] = grpc_addr
-        return targets 
+        return targets
 
     def wait_until_ready(self):
         tasks = sorted(self.tasks.values(), key=lambda task: task.task_index)
 
-        while not all(task.initalized for task in tasks):
+        while not all(task.initialized for task in tasks):
             self.logger.info("Cluster not ready")
             time.sleep(10)
         time.sleep(10)
         self.logger.info("Cluster ready")
         self.logger.info("Suppress Mesos Framework")
-        self.driver.suppress()        
+        self.driver.suppress()
 
     @property
     def cluster_def(self):
@@ -424,12 +409,14 @@ class TensorflowMesos():
 
         return cluster_def
 
-    
+    @property
+    def get_tasks(self):
+        return self.tasks
+
 class API(threading.Thread):
     def __init__(self, tasks, port=11000):
         threading.Thread.__init__(self)
         self.tasks = tasks
-        self.stop_event = threading.Event()         
         self.port = port
 
     def run(self):
@@ -463,23 +450,19 @@ class API(threading.Thread):
 
         serve(app, host="0.0.0.0", port=self.port)
 
-    def stop(self):
-        self.stop_event.set()        
-        self.join()        
-
     def set_task_port(self, task_id, port):
         if task_id in self.tasks:
             self.tasks[task_id].port = port
-            self.tasks[task_id].initalized = True
+            self.tasks[task_id].initialized = True
 
         return Response(None, status=200, mimetype="application/json")
-    
+
     def set_task_init(self, task_id):
         if task_id in self.tasks:
-            self.tasks[task_id].initalized = True
+            self.tasks[task_id].initialized = True
 
         return Response(None, status=200, mimetype="application/json")
-    
+
     def get_status(self):
         res = "nok"
         tasks = sorted(self.tasks.values(), key=lambda task: task.task_index)
@@ -491,7 +474,7 @@ class API(threading.Thread):
                 return Response(res, status=204, mimetype="application/json")
 
         return Response(res, status=200, mimetype="application/json")
-    
+
     def get_task_job(self, task_id):
         cluster_def = {}
 
@@ -501,23 +484,21 @@ class API(threading.Thread):
             if task.addr is not None and task.port is not None:
                 cluster_def.setdefault(task.job_name, []).append(task.addr+":"+task.port)
 
-        if task_id in self.tasks:
-            if self.tasks[task_id] is not None:
-                data = {
-                    'job_name': self.tasks[task_id].job_name,
-                    'task_index': self.tasks[task_id].task_index,
-                    'cpus':self.tasks[task_id].cpus,
-                    'mem': self.tasks[task_id].mem,
-                    'gpus':self.tasks[task_id].gpus,
-                    'cmd': self.tasks[task_id].cmd,
-                    'cluster_def': cluster_def
-                }
+        if task_id in self.tasks and self.tasks[task_id] is not None:
+            data = {
+                'job_name': self.tasks[task_id].job_name,
+                'task_index': self.tasks[task_id].task_index,
+                'cpus':self.tasks[task_id].cpus,
+                'mem': self.tasks[task_id].mem,
+                'gpus':self.tasks[task_id].gpus,
+                'cluster_def': cluster_def
+            }
 
-                response = Response(
-                    json.dumps(data), status=200, mimetype="application/json"
-                )
-                return response        
-        
+            response = Response(
+                json.dumps(data), status=200, mimetype="application/json"
+            )
+            return response
+
         response = Response(None, status=200, mimetype="application/json")
-        return response        
+        return response
     

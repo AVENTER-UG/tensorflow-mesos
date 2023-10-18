@@ -10,11 +10,11 @@ def main():
     jobs_def = [
         {
             "name": "ps",
-            "num":1 
+            "num":2 
         },
         {
             "name": "worker",
-            "num":2 
+            "num":1 
         },
     ]
 
@@ -30,10 +30,10 @@ def main():
         strategy = tf.distribute.ParameterServerStrategy(cluster_resolver)
 
         with strategy.scope():
-            constant_a = tf.constant(10)
-            constant_b = tf.constant(32)
+            mat_a = tf.constant([[2,3], [1,2], [4,5]])
+            mat_b = tf.constant([[6,4,1], [3,7,2]])
 
-            op = constant_a + constant_b
+            op = tf.matmul(mat_a, mat_b)
 
         result = op.numpy()
         print("Result is: ")

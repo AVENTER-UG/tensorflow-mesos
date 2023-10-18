@@ -1,3 +1,14 @@
 ## Changelog
 
 ## master
+
+- ADD: matrix calculation as example
+
+## v0.1.1
+
+- CHANGE: Improve cluster definition and thread handling.
+
+## v0.1.0
+
+- First in. 
+

@@ -1,19 +1,9 @@
-try:
-    from setuptools import setup, find_packages
-except ImportError:
-    from distutils.core import setup
-
-from distutils.command.install import install
 import os
-import json
+from setuptools import setup, find_packages
 
 here = os.path.abspath(os.path.dirname(__file__))
-try:
-    with open(os.path.join(here, "README.md")) as f:
-        README = f.read()
-except UnicodeDecodeError:
-    with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
-        README = f.read()
+with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
+    README = f.read()
 
 setup(
     name="tfmesos2",
