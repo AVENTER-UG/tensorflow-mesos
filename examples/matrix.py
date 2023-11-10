@@ -18,7 +18,9 @@ def main():
         },
     ]
 
-    with cluster(jobs_def) as c:
+    client_ip = "192.168.150.6"
+
+    with cluster(jobs_def, client_ip=client_ip) as c:
         os.environ["TF_CONFIG"] = json.dumps({
             "cluster": c.cluster_def
         })
