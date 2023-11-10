@@ -7,7 +7,7 @@ with open(os.path.join(here, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="tfmesos2",
-    version="0.1.2",
+    version="0.2.0",
     description="Tensorflow for Apache Mesos",
     long_description=README,
     long_description_content_type="text/markdown",
