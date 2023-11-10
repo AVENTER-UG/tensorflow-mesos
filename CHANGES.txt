@@ -1,8 +1,17 @@
 ## Changelog
 
-## master
+## v0.2.0
 
-- ADD: matrix calculation as example
+- ADD: support for mesos fetcher.
+- ADD: client ip and port parameter to the cluster definition.
+- ADD: example for jupyter and image recognition.
+- ADD: API to download files from a local directory.
+- FIX: API to use clients current IP.
+
+## v0.1.2
+
+- ADD: matrix calculation as example.
+- CHANGE: cleanup code.
 
 ## v0.1.1
 

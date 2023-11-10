@@ -6,11 +6,12 @@ import logging
 import uuid
 import sys
 import time
+import socket
 from queue import Queue
 import urllib
 import urllib3
 import requests
-from flask import Flask, Response
+from flask import Flask, Response, send_from_directory, abort
 from addict import Dict
 from six import iteritems
 from avmesos.client import MesosClient
@@ -33,7 +34,7 @@ class Job(object):
 class Task(object):
 
     def __init__(self, mesos_task_id, job_name, task_index,
-                 cpus=1.0, mem=1024.0, gpus=0, volumes=None, env=None, logger=None):
+                 cpus=1.0, mem=1024.0, gpus=0, volumes=None, env=None, logger=None, fetcher=None):
         self.mesos_task_id = mesos_task_id
         self.job_name = job_name
         self.task_index = task_index
@@ -43,6 +44,7 @@ class Task(object):
         self.mem = mem
         self.volumes = volumes
         self.env = env
+        self.fetcher = fetcher
         self.offered = False
 
         self.addr = None
@@ -56,6 +58,8 @@ class Task(object):
             self.volumes = {}
         if env is None:
             self.env = {}
+        if fetcher is None:
+            self.fetcher = {}
 
     def to_task_info(self, offer, master_addr, gpu_uuids=None,
                      gpu_resource_type=None, containerizer_type='DOCKER',
@@ -152,6 +156,10 @@ class Task(object):
             for name, value in self.env.items()
             if name != 'PYTHONPATH'
         ]
+        ti.command.uris = [
+            Dict(value=value, extract=extract)
+            for value, extract in self.fetcher.items()
+        ]
         env = Dict()
         variables.append(env)
         env.name = 'PYTHONPATH'
@@ -165,7 +173,8 @@ class TensorflowMesos(threading.Thread):
     def run(self):
         self.client.register()
 
-    def __init__(self, task_spec, volumes=None, env=None, loglevel=logging.INFO):
+    def __init__(self, task_spec, client_ip=None, port=11000, volumes=None, env=None, loglevel=logging.INFO, containerizer_type="DOCKER",
+                 force_pull_image=True, fetcher=None, extra_config=None):
         urllib3.disable_warnings()
         logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s')
 
@@ -177,11 +186,20 @@ class TensorflowMesos(threading.Thread):
         self.driver = None
         self.task_queue = Queue()
         self.tasks = {}
+        self.containerizer_type = containerizer_type
+        self.force_pull_image = force_pull_image
+        self.extra_config = extra_config        
+        self.port = port
+        self.client_ip = client_ip
 
         if volumes is None:
             self.volumes = {}
         if env is None:
             self.env = {}
+        if fetcher is None:
+            self.fetcher = {}
+        if client_ip is None:
+            self.client_ip = socket.gethostbyname(socket.gethostname())
 
         for job in task_spec:
             for task_index in range(job.start, job.num):
@@ -195,6 +213,7 @@ class TensorflowMesos(threading.Thread):
                     gpus=job.gpus,
                     volumes=volumes,
                     env=env,
+                    fetcher=fetcher,
                     logger=self.logger
                 )
                 self.tasks[mesos_task_id] = task
@@ -308,8 +327,6 @@ class TensorflowMesos(threading.Thread):
         offer_mem = 256.0
         offer_gpus = []
         gpu_resource_type = None
-        force_pull = "false"
-        container_type = "DOCKER"
 
         if not self.task_queue.empty():
             task = self.task_queue.get()
@@ -346,12 +363,11 @@ class TensorflowMesos(threading.Thread):
 
             self.logger.info("Launching task %s using offer %s", task.mesos_task_id, offer["id"]["value"])
 
-
             task = task.to_task_info(
-                   offer, "192.168.150.6:11000", gpu_uuids=gpu_uuids,
+                   offer, f"{self.client_ip}:{self.port}", gpu_uuids=gpu_uuids,
                    gpu_resource_type=gpu_resource_type,
-                   containerizer_type=container_type,
-                   force_pull_image=force_pull
+                   containerizer_type=self.containerizer_type,
+                   force_pull_image=self.force_pull_image
             )
 
             tasks.append(task)
@@ -448,6 +464,13 @@ class API(threading.Thread):
             methods=["PUT"],
         )
 
+        app.add_url_rule(
+            "/v0/download/<filename>",
+            "download/<filename>",
+            self.get_download,
+            methods=["GET"],
+        )
+
         serve(app, host="0.0.0.0", port=self.port)
 
     def set_task_port(self, task_id, port):
@@ -501,4 +524,13 @@ class API(threading.Thread):
 
         response = Response(None, status=200, mimetype="application/json")
         return response
+    
+    def get_download(self, filename):
+        directory = os.getcwd()+'/download'
+        if ".." in filename:
+            abort(403) 
+        try:
+            return send_from_directory(directory=directory, path=filename)
+        except FileNotFoundError:
+            abort(404)
     
