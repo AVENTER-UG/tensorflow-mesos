@@ -5,6 +5,11 @@ import os
 import tensorflow as tf
 from tfmesos2 import cluster
 
+os.environ["MESOS_MASTER"] = "devtest.lab.internal:5050"
+os.environ["MESOS_SSL"] = "true"
+os.environ["MESOS_USERNAME"] = "mesos"
+os.environ["MESOS_PASSWORD"] = "test"
+
 
 def main():
     jobs_def = [
@@ -18,7 +23,7 @@ def main():
         },
     ]
 
-    client_ip = "192.168.150.6"
+    client_ip = "192.168.150.81"
 
     with cluster(jobs_def, client_ip=client_ip) as c:
         os.environ["TF_CONFIG"] = json.dumps({
