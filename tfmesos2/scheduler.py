@@ -178,7 +178,7 @@ class TensorflowMesos(threading.Thread):
         urllib3.disable_warnings()
         logging.basicConfig(level=loglevel, format='%(asctime)s %(levelname)s: %(message)s')
 
-        threading.Thread.__init__(self)
+        super().__init__()
         self.stop_event = threading.Event()
         self.stop = False
 
@@ -319,7 +319,7 @@ class TensorflowMesos(threading.Thread):
 
     # pylint: disable=too-many-branches
     def run_job(self, mesos_offer):
-        """Start a queued Airflow task in Mesos"""
+        """Start a queued Tensorflow task in Mesos"""
         offer = mesos_offer.get_offer()
         tasks = []
         option = {}
@@ -430,8 +430,10 @@ class TensorflowMesos(threading.Thread):
         return self.tasks
 
 class API(threading.Thread):
-    def __init__(self, tasks, port=11000):
-        threading.Thread.__init__(self)
+    def __init__(self, tasks, port=11000, daemon=True):
+        super().__init__()
+        self.daemon = daemon
+        self.logger = logging
         self.tasks = tasks
         self.port = port
 

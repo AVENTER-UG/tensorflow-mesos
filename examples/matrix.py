@@ -15,20 +15,18 @@ def main():
     jobs_def = [
         {
             "name": "ps",
-            "num":2 
+            "num":1
         },
         {
             "name": "worker",
-            "num":1 
+            "num":2
         },
     ]
 
     client_ip = "192.168.150.81"
 
     with cluster(jobs_def, client_ip=client_ip) as c:
-        os.environ["TF_CONFIG"] = json.dumps({
-            "cluster": c.cluster_def
-        })
+        os.environ["TF_CONFIG"] = json.dumps({"cluster":c.cluster_def})
 
         print(os.environ["TF_CONFIG"])
 
@@ -45,7 +43,6 @@ def main():
         result = op.numpy()
         print("Result is: ")
         print(result)
-        c.shutdown()
 
 if __name__ == '__main__':
     main()
