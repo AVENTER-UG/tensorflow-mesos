@@ -11,13 +11,13 @@ from tensorflow.keras import layers
 from tfmesos2 import cluster
 
 # MESOS-Umgebungsvariablen setzen
-os.environ["MESOS_MASTER"] = "devtest.lab.internal:5050"
+os.environ["MESOS_MASTER"] = <MESOS_MASTER>:5050"
 os.environ["MESOS_SSL"] = "true"
-os.environ["MESOS_USERNAME"] = "mesos"
-os.environ["MESOS_PASSWORD"] = "test"
+os.environ["MESOS_USERNAME"] = "<MESOS_USERNAME>"
+os.environ["MESOS_PASSWORD"] = "<MESOS_PASSWORD>"
 
 extra_kw = {}
-extra_kw['fetcher'] = {"http://192.168.150.81:11000/v0/download/flower_photos.tgz": "true"}
+extra_kw['fetcher'] = {"http://<DEVELOPERS_IP>:11000/v0/download/flower_photos.tgz": "true"}
 
 data_dir = pathlib.Path("/mnt/mesos/sandbox/flower_photos/")
 
@@ -46,7 +46,7 @@ def main():
         {"name": "worker", "num": 2},
     ]
 
-    client_ip = "192.168.150.81"
+    client_ip = "<DEVELOPERS_IP>"
 
     with cluster(jobs_def, client_ip=client_ip, **extra_kw) as c:
         os.environ["TF_CONFIG"] = json.dumps({"cluster": c.cluster_def})
